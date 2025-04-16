@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoodFlow AI - 情绪音乐流</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta name="description" content="MoodFlow AI - 基于AI生成的个性化音乐流，根据你的情绪和场景定制">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-music"></i> MoodFlow AI</h1>
+            <p>选择一种情绪，开启你的个性化音乐流</p>
+        </header>
+
+        <div id="api-key-prompt" class="modal hidden">
+            <div class="modal-content">
+                <h3>请输入Replicate API密钥</h3>
+                <p>要使用MoodFlow AI，你需要一个Replicate API密钥。</p>
+                <p class="small-text">前往 <a href="https://replicate.com/account" target="_blank">replicate.com/account</a> 登录并获取你的API密钥。</p>
+                <input type="text" id="api-key-input" placeholder="输入你的API密钥...">
+                <button id="save-api-key">保存并继续</button>
+            </div>
+        </div>
+
+        <div id="mood-selection" class="mood-cards">
+            <div class="mood-card" data-mood="calm-focus">
+                <div class="card-content">
+                    <h3><i class="fas fa-brain"></i> 宁静专注</h3>
+                    <p>平静的节奏，帮助你集中注意力</p>
+                    <div class="card-icon">🧠</div>
+                </div>
+            </div>
+            
+            <div class="mood-card" data-mood="energetic-morning">
+                <div class="card-content">
+                    <h3><i class="fas fa-sun"></i> 活力晨间</h3>
+                    <p>充满活力的旋律，开启美好的一天</p>
+                    <div class="card-icon">☀️</div>
+                </div>
+            </div>
+            
+            <div class="mood-card" data-mood="relaxing-night">
+                <div class="card-content">
+                    <h3><i class="fas fa-moon"></i> 舒缓夜晚</h3>
+                    <p>轻柔的音乐，帮助你放松入眠</p>
+                    <div class="card-icon">🌙</div>
+                </div>
+            </div>
+            
+            <div class="mood-card" data-mood="cafe-vibe">
+                <div class="card-content">
+                    <h3><i class="fas fa-coffee"></i> 咖啡馆氛围</h3>
+                    <p>温馨舒适的氛围，仿佛置身咖啡馆</p>
+                    <div class="card-icon">☕</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="player-container" class="hidden">
+            <div class="player-controls">
+                <button id="play-pause-btn" class="control-btn">
+                    <span id="play-icon"><i class="fas fa-play"></i></span>
+                    <span id="pause-icon" class="hidden"><i class="fas fa-pause"></i></span>
+                </button>
+                <button id="change-mood-btn" class="control-btn"><i class="fas fa-exchange-alt"></i> 切换情绪</button>
+            </div>
+            <div class="now-playing">
+                <h3>正在播放: <span id="current-mood-text">情绪</span></h3>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div id="progress" class="progress"></div>
+                    </div>
+                    <div class="time-display">
+                        <span id="current-time">0:00</span> / <span id="duration">0:00</span>
+                    </div>
+                </div>
+                <div id="status-message">准备生成音乐...</div>
+            </div>
+            <audio id="audio-player"></audio>
+        </div>
+
+        <footer>
+            <p>MoodFlow AI 使用 <a href="https://replicate.com/minimax/music-01" target="_blank">minimax/music-01</a> 模型生成音乐</p>
+            <p class="small-text">© <span id="current-year">2023</span> MoodFlow AI - <a href="#" id="reset-api-key">重置API密钥</a></p>
+        </footer>
+    </div>
+    
+    <script src="js/api.js"></script>
+    <script src="js/audio-player.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        // 注册Service Worker（仅在HTTP/HTTPS协议下）
+        if ('serviceWorker' in navigator && 
+            (window.location.protocol === 'https:' || window.location.protocol === 'http:')) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('Service Worker注册成功:', registration);
+                    })
+                    .catch(error => {
+                        console.log('Service Worker注册失败:', error);
+                    });
+            });
+        } else if (window.location.protocol === 'file:') {
+            console.log('Service Worker无法在本地文件系统(file://)下注册，请使用HTTP服务器运行以获得完整功能');
+        }
+    </script>
+</body>
+</html> 
