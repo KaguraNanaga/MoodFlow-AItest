@@ -7,106 +7,196 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <meta name="description" content="MoodFlow AI - 基于AI生成的个性化音乐流，根据你的情绪和场景定制">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* 应用 Inter 字体 */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* 简单的加载状态样式 (如果需要) */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999; /* 确保在最上层 */
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3; /* Light grey */
+            border-top: 4px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+        /* 为卡片添加一些基本样式 (如果 styles.css 不可用) */
+        .container { max-width: 800px; margin: 2rem auto; padding: 1rem; background-color: #f9fafb; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        header { text-align: center; margin-bottom: 2rem; }
+        header h1 { font-size: 2.25rem; font-weight: 700; color: #1f2937; }
+        header p { color: #6b7280; }
+        .mood-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .mood-card { background-color: white; border-radius: 0.5rem; padding: 1.5rem; text-align: center; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }
+        .mood-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+        .card-content h3 { font-size: 1.125rem; font-weight: 500; margin-bottom: 0.5rem; color: #111827; }
+        .card-content p { font-size: 0.875rem; color: #6b7280; margin-bottom: 1rem; }
+        .card-icon { font-size: 2rem; }
+        .player-container { background-color: white; border-radius: 0.5rem; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }
+        .player-controls { display: flex; justify-content: center; gap: 1rem; margin-bottom: 1rem; }
+        .control-btn { background-color: #3b82f6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.375rem; cursor: pointer; transition: background-color 0.2s ease; font-size: 1rem; }
+        .control-btn:hover { background-color: #2563eb; }
+        .control-btn i { margin-right: 0.5rem; }
+        .now-playing h3 { text-align: center; font-size: 1.125rem; font-weight: 500; margin-bottom: 1rem; color: #111827; }
+        .progress-container { margin-bottom: 1rem; }
+        .progress-bar { background-color: #e5e7eb; border-radius: 9999px; height: 8px; overflow: hidden; }
+        .progress { background-color: #3b82f6; height: 100%; width: 0%; transition: width 0.1s linear; }
+        .time-display { display: flex; justify-content: space-between; font-size: 0.875rem; color: #6b7280; margin-top: 0.5rem; }
+        #status-message { text-align: center; color: #6b7280; margin-top: 1rem; min-height: 1.5em; } /* Added min-height */
+        footer { text-align: center; margin-top: 2rem; font-size: 0.875rem; color: #9ca3af; }
+        footer a { color: #3b82f6; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        .small-text { font-size: 0.75rem; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background-color: white; padding: 2rem; border-radius: 0.5rem; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 90%; }
+        .modal-content h3 { font-size: 1.25rem; margin-bottom: 1rem; }
+        .modal-content p { margin-bottom: 1rem; color: #4b5563; }
+        .modal-content input[type="text"] { width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; margin-bottom: 1rem; }
+        .modal-content button { background-color: #10b981; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 0.375rem; cursor: pointer; transition: background-color 0.2s; }
+        .modal-content button:hover { background-color: #059669; }
+    </style>
 </head>
-<body>
-    <div class="container">
-        <header>
-            <h1><i class="fas fa-music"></i> MoodFlow AI</h1>
-            <p>选择一种情绪，开启你的个性化音乐流</p>
+<body class="bg-gray-100"> <div id="loading-indicator" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <div class="container mx-auto p-4 md:p-8"> <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2"><i class="fas fa-music mr-2"></i> MoodFlow AI</h1>
+            <p class="text-gray-600">选择一种情绪，开启你的个性化音乐流</p>
         </header>
 
         <div id="api-key-prompt" class="modal hidden">
-            <div class="modal-content">
-                <h3>请输入Replicate API密钥</h3>
-                <p>要使用MoodFlow AI，你需要一个Replicate API密钥。</p>
-                <p class="small-text">前往 <a href="https://replicate.com/account" target="_blank">replicate.com/account</a> 登录并获取你的API密钥。</p>
-                <input type="text" id="api-key-input" placeholder="输入你的API密钥...">
-                <button id="save-api-key">保存并继续</button>
+            <div class="modal-content bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-auto">
+                <h3 class="text-xl font-semibold mb-4 text-gray-700">请输入Replicate API密钥</h3>
+                <p class="mb-4 text-gray-600">要使用MoodFlow AI，你需要一个Replicate API密钥。</p>
+                <p class="small-text mb-4 text-gray-500">前往 <a href="https://replicate.com/account" target="_blank" class="text-blue-500 hover:underline">replicate.com/account</a> 登录并获取你的API密钥。</p>
+                <input type="password" id="api-key-input" placeholder="输入你的API密钥..." class="w-full px-4 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="save-api-key" class="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-md cursor-pointer transition duration-200">保存并继续</button>
             </div>
         </div>
 
-        <div id="mood-selection" class="mood-cards">
-            <div class="mood-card" data-mood="calm-focus">
+        <div id="mood-selection" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="mood-card bg-white rounded-lg p-6 text-center cursor-pointer transition transform hover:-translate-y-1 shadow-md hover:shadow-lg border border-gray-200" data-mood="calm-focus" data-prompt="instrumental, lofi hip hop, calm, focus, study beats, low tempo, no vocals, simple bassline, soft drums, 70 bpm" data-preview="audio/preview_calm_focus.mp3"> <div class="card-content">
+                    <div class="text-3xl mb-3">🧠</div>
+                    <h3 class="text-lg font-medium mb-2 text-gray-800"><i class="fas fa-brain mr-1"></i> 宁静专注</h3>
+                    <p class="text-sm text-gray-600">平静的节奏，帮助你集中注意力</p>
+                    <audio class="preview-audio hidden" src="audio/preview_calm_focus.mp3" preload="metadata"></audio> </div>
+            </div>
+
+            <div class="mood-card bg-white rounded-lg p-6 text-center cursor-pointer transition transform hover:-translate-y-1 shadow-md hover:shadow-lg border border-gray-200" data-mood="energetic-morning" data-prompt="upbeat instrumental, acoustic guitar, light percussion, positive energy, morning vibe, walking tempo, happy melody, 110 bpm" data-preview="audio/preview_energetic_morning.mp3">
                 <div class="card-content">
-                    <h3><i class="fas fa-brain"></i> 宁静专注</h3>
-                    <p>平静的节奏，帮助你集中注意力</p>
-                    <div class="card-icon">🧠</div>
+                     <div class="text-3xl mb-3">☀️</div>
+                    <h3 class="text-lg font-medium mb-2 text-gray-800"><i class="fas fa-sun mr-1"></i> 活力晨间</h3>
+                    <p class="text-sm text-gray-600">充满活力的旋律，开启美好的一天</p>
+                     <audio class="preview-audio hidden" src="audio/preview_energetic_morning.mp3" preload="metadata"></audio>
                 </div>
             </div>
-            
-            <div class="mood-card" data-mood="energetic-morning">
+
+            <div class="mood-card bg-white rounded-lg p-6 text-center cursor-pointer transition transform hover:-translate-y-1 shadow-md hover:shadow-lg border border-gray-200" data-mood="relaxing-night" data-prompt="ambient music, relaxing, sleep, calm, synthesizer pads, slow tempo, minimal, atmospheric, 60 bpm" data-preview="audio/preview_relaxing_night.mp3">
                 <div class="card-content">
-                    <h3><i class="fas fa-sun"></i> 活力晨间</h3>
-                    <p>充满活力的旋律，开启美好的一天</p>
-                    <div class="card-icon">☀️</div>
+                     <div class="text-3xl mb-3">🌙</div>
+                    <h3 class="text-lg font-medium mb-2 text-gray-800"><i class="fas fa-moon mr-1"></i> 舒缓夜晚</h3>
+                    <p class="text-sm text-gray-600">轻柔的音乐，帮助你放松入眠</p>
+                     <audio class="preview-audio hidden" src="audio/preview_relaxing_night.mp3" preload="metadata"></audio>
                 </div>
             </div>
-            
-            <div class="mood-card" data-mood="relaxing-night">
+
+            <div class="mood-card bg-white rounded-lg p-6 text-center cursor-pointer transition transform hover:-translate-y-1 shadow-md hover:shadow-lg border border-gray-200" data-mood="cafe-vibe" data-prompt="jazz hop, cafe ambience, instrumental, relaxed, coffee shop background music, moderate tempo, saxophone hints, 85 bpm" data-preview="audio/preview_cafe_vibe.mp3">
                 <div class="card-content">
-                    <h3><i class="fas fa-moon"></i> 舒缓夜晚</h3>
-                    <p>轻柔的音乐，帮助你放松入眠</p>
-                    <div class="card-icon">🌙</div>
-                </div>
-            </div>
-            
-            <div class="mood-card" data-mood="cafe-vibe">
-                <div class="card-content">
-                    <h3><i class="fas fa-coffee"></i> 咖啡馆氛围</h3>
-                    <p>温馨舒适的氛围，仿佛置身咖啡馆</p>
-                    <div class="card-icon">☕</div>
+                     <div class="text-3xl mb-3">☕</div>
+                    <h3 class="text-lg font-medium mb-2 text-gray-800"><i class="fas fa-coffee mr-1"></i> 咖啡馆氛围</h3>
+                    <p class="text-sm text-gray-600">温馨舒适的氛围，仿佛置身咖啡馆</p>
+                     <audio class="preview-audio hidden" src="audio/preview_cafe_vibe.mp3" preload="metadata"></audio>
                 </div>
             </div>
         </div>
 
-        <div id="player-container" class="hidden">
-            <div class="player-controls">
-                <button id="play-pause-btn" class="control-btn">
+        <div id="player-container" class="hidden bg-white rounded-lg p-6 shadow-md border border-gray-200">
+            <div class="now-playing mb-4">
+                <h3 class="text-center text-lg font-medium mb-4 text-gray-800">正在播放: <span id="current-mood-text" class="font-semibold">情绪</span></h3>
+                <div id="status-message" class="text-center text-gray-600 mb-4 min-h-[1.5em]">准备生成音乐...</div>
+                <div class="progress-container mb-2">
+                    <div class="progress-bar bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div id="progress" class="progress bg-blue-500 h-full w-0 transition-width duration-100 ease-linear"></div>
+                    </div>
+                    <div class="time-display flex justify-between text-sm text-gray-500 mt-1">
+                        <span id="current-time">0:00</span>
+                        <span id="duration">0:00</span>
+                    </div>
+                </div>
+            </div>
+             <div class="player-controls flex justify-center items-center gap-4">
+                <button id="play-pause-btn" class="control-btn bg-blue-500 hover:bg-blue-600 text-white w-12 h-12 rounded-full flex items-center justify-center transition duration-200 shadow">
                     <span id="play-icon"><i class="fas fa-play"></i></span>
                     <span id="pause-icon" class="hidden"><i class="fas fa-pause"></i></span>
                 </button>
-                <button id="change-mood-btn" class="control-btn"><i class="fas fa-exchange-alt"></i> 切换情绪</button>
+                <button id="change-mood-btn" class="control-btn bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md transition duration-200 text-sm shadow">
+                    <i class="fas fa-exchange-alt mr-1"></i> 切换情绪
+                </button>
             </div>
-            <div class="now-playing">
-                <h3>正在播放: <span id="current-mood-text">情绪</span></h3>
-                <div class="progress-container">
-                    <div class="progress-bar">
-                        <div id="progress" class="progress"></div>
-                    </div>
-                    <div class="time-display">
-                        <span id="current-time">0:00</span> / <span id="duration">0:00</span>
-                    </div>
-                </div>
-                <div id="status-message">准备生成音乐...</div>
-            </div>
-            <audio id="audio-player"></audio>
+            <audio id="audio-player" class="hidden"></audio>
         </div>
 
-        <footer>
-            <p>MoodFlow AI 使用 <a href="https://replicate.com/minimax/music-01" target="_blank">minimax/music-01</a> 模型生成音乐</p>
-            <p class="small-text">© <span id="current-year">2023</span> MoodFlow AI - <a href="#" id="reset-api-key">重置API密钥</a></p>
+        <footer class="text-center mt-8 text-sm text-gray-500">
+            <p>MoodFlow AI 使用 <a href="https://replicate.com/minimax/music-01" target="_blank" class="text-blue-500 hover:underline">minimax/music-01</a> 模型生成音乐</p>
+            <p class="small-text mt-2">© <span id="current-year">2023</span> MoodFlow AI - <a href="#" id="reset-api-key" class="text-blue-500 hover:underline">重置API密钥</a></p>
         </footer>
     </div>
-    
+
     <script src="js/api.js"></script>
     <script src="js/audio-player.js"></script>
     <script src="js/app.js"></script>
     <script>
-        // 注册Service Worker（仅在HTTP/HTTPS协议下）
-        if ('serviceWorker' in navigator && 
-            (window.location.protocol === 'https:' || window.location.protocol === 'http:')) {
+        // Update current year in footer
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+
+        // Register Service Worker (only in secure contexts or localhost)
+        // Changed path from /sw.js to sw.js for better compatibility, especially with GitHub Pages subdirectories
+        if ('serviceWorker' in navigator &&
+            (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('sw.js') // Relative path
                     .then(registration => {
-                        console.log('Service Worker注册成功:', registration);
+                        console.log('Service Worker registered successfully with scope:', registration.scope);
                     })
                     .catch(error => {
-                        console.log('Service Worker注册失败:', error);
+                        console.error('Service Worker registration failed:', error);
+                        // Inform user if SW registration fails, might affect offline capabilities if implemented
+                        // const statusMsg = document.getElementById('status-message');
+                        // if (statusMsg) statusMsg.textContent = 'Service Worker registration failed. Offline features might be unavailable.';
                     });
             });
         } else if (window.location.protocol === 'file:') {
-            console.log('Service Worker无法在本地文件系统(file://)下注册，请使用HTTP服务器运行以获得完整功能');
+            console.warn('Service Worker cannot be registered when running from the local file system (file://). Use a local HTTP server for full functionality.');
+            // Optionally inform the user via UI
+            const statusMsg = document.getElementById('status-message');
+            if (statusMsg) statusMsg.textContent = '请使用HTTP服务器运行以获得完整功能。';
+        } else {
+             console.log('Service Worker not supported or not in a secure context.');
         }
     </script>
 </body>
-</html> 
+</html>
