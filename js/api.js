@@ -7,7 +7,6 @@ const REPLICATE_API_URL = 'https://api.replicate.com/v1/predictions';
 // User API Key - Initialized as empty, needs user input
 let REPLICATE_API_TOKEN = '';
 
-// --- IMPORTANT CHANGES ---
 // Mood prompts mapping (Using English prompts as likely expected by the model)
 // These prompts are based on your initial project description.
 // You should test and refine these prompts based on the actual output of minimax/music-01.
@@ -81,12 +80,13 @@ async function generateMusic(mood) {
         throw new Error('无效的情绪类型'); // Invalid mood type
     }
 
-    // --- IMPORTANT CHANGES ---
-    const prompt = MOOD_PROMPTS[mood]; // Use the English prompt
+    // --- Use the correct prompt text for the selected mood ---
+    const lyricsText = MOOD_PROMPTS[mood]; // Get the English prompt text
     const musicDuration = 90; // Example duration in seconds. Verify parameter name and units with Replicate docs!
-    const modelVersion = "9a423b48397ce2d82e2fc5be17cc6c273cc129cf70e0f44a911d6b0385853b4e"; // Verify this version ID on Replicate!
+    // --- Verify this version ID on the Replicate model page! ---
+    const modelVersion = "9a423b48397ce2d82e2fc5be17cc6c273cc129cf70e0f44a911d6b0385853b4e";
 
-    console.log(`Generating music for mood: ${mood} with prompt: "${prompt}" and duration: ${musicDuration}s`);
+    console.log(`Generating music for mood: ${mood} with lyrics: "${lyricsText}" and duration: ${musicDuration}s`);
 
     try {
         // Step 1: Create the prediction request
@@ -96,15 +96,16 @@ async function generateMusic(mood) {
                 'Authorization': `Token ${REPLICATE_API_TOKEN}`,
                 'Content-Type': 'application/json'
             },
-            // --- IMPORTANT CHANGES ---
-            // Use 'prompt' instead of 'lyrics' and add 'duration'
-            // Verify the exact parameter names required by the specific model version on Replicate.
+            // --- *** KEY CHANGE HERE *** ---
+            // Use 'lyrics' as the parameter name based on the Python example.
+            // Keep 'duration' assuming it's supported. Verify on Replicate docs.
             body: JSON.stringify({
                 version: modelVersion,
                 input: {
-                    prompt: prompt,
+                    lyrics: lyricsText, // Use 'lyrics' instead of 'prompt'
                     duration: musicDuration // Assuming the parameter is named 'duration' and expects seconds
                     // Add other parameters like temperature if needed/supported
+                    // song_file: null // Explicitly null or omit if not used
                 }
             })
         });
@@ -125,6 +126,9 @@ async function generateMusic(mood) {
                  throw new Error(`API请求失败: 需要付费 (402)。请检查你的Replicate账户余额或计划。`); // Payment required. Check your Replicate account.
             } else if (initialResponse.status === 429) {
                  throw new Error(`API请求失败: 请求过于频繁 (429)。请稍后再试。`); // Rate limit exceeded. Try again later.
+            } else if (initialResponse.status === 422) {
+                 // 422 often means invalid input parameters
+                 throw new Error(`API请求失败: 输入无效 (422)。请检查模型版本和输入参数（如lyrics, duration）。详情: ${errorData.detail || '无'}`);
             } else {
                 throw new Error(`API请求失败: ${errorData.detail || initialResponse.statusText} (${initialResponse.status})`);
             }
@@ -138,9 +142,13 @@ async function generateMusic(mood) {
         }
 
         console.log(`Prediction started with ID: ${predictionId}`);
-        updateStatusMessage(`正在生成音乐 (ID: ${predictionId.substring(0, 6)})...`); // Generating music...
+        // Use the globally available updateStatusMessage function from app.js
+        if (typeof window.updateStatusMessage === 'function') {
+             window.updateStatusMessage(`正在生成音乐 (ID: ${predictionId.substring(0, 6)})...`); // Generating music...
+        }
 
-        // Step 2: Poll for the prediction result
+
+        // Step 2: Poll for the prediction result (No changes needed in polling logic itself)
         return await pollPredictionResult(predictionId);
 
     } catch (error) {
@@ -174,13 +182,15 @@ async function pollPredictionResult(predictionId) {
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         console.log(`Polling attempt ${attempt + 1} for prediction ID: ${predictionId}`);
-        await new Promise(resolve => setTimeout(resolve, pollInterval)); // Wait before the next poll
+        // Wait *before* the next poll attempt
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
 
         try {
             const pollResponse = await fetch(`${REPLICATE_API_URL}/${predictionId}`, {
                 headers: {
                     'Authorization': `Token ${REPLICATE_API_TOKEN}`,
                     'Content-Type': 'application/json'
+                    // 'Accept': 'application/json' // Explicitly accept JSON
                 }
             });
 
@@ -198,7 +208,9 @@ async function pollPredictionResult(predictionId) {
             // Check the prediction status
             if (result.status === 'succeeded') {
                 console.log('音乐生成成功！(Music generation successful!)');
-                updateStatusMessage('音乐生成成功！');
+                 if (typeof window.updateStatusMessage === 'function') {
+                    window.updateStatusMessage('音乐生成成功！'); // Music generation successful!
+                 }
                 // Ensure the output is the expected audio URL string
                 if (typeof result.output === 'string' && result.output.startsWith('http')) {
                      return result.output;
@@ -213,8 +225,8 @@ async function pollPredictionResult(predictionId) {
                      throw new Error('音乐生成成功，但未能获取有效的音频URL。'); // Succeeded, but couldn't get a valid audio URL.
                 }
             } else if (result.status === 'failed') {
-                console.error('音乐生成失败 (Music generation failed by Replicate). Error:', result.error);
-                // --- IMPORTANT CHANGE --- Log the specific error from Replicate
+                console.error('音乐生成失败 (Music generation failed by Replicate). Error details:', result.error);
+                // Log the specific error from Replicate
                 throw new Error(`音乐生成失败: ${result.error || '未知错误'}`); // Music generation failed: [API error or 'Unknown error']
             } else if (result.status === 'canceled') {
                  console.warn('音乐生成任务已被取消。(Music generation task was cancelled.)');
@@ -222,7 +234,9 @@ async function pollPredictionResult(predictionId) {
             }
              // If status is 'starting' or 'processing', continue polling
             console.log(`当前状态 (Current status): ${result.status}. 继续轮询... (Continuing polling...)`);
-             updateStatusMessage(`正在生成音乐 (${result.status})...`); // Update status for user
+             if (typeof window.updateStatusMessage === 'function') {
+                 window.updateStatusMessage(`正在生成音乐 (${result.status})...`); // Update status for user (Generating music...)
+             }
 
         } catch (error) {
             console.error('轮询预测结果时出错 (Error during polling):', error);
@@ -242,14 +256,6 @@ async function pollPredictionResult(predictionId) {
     throw new Error('生成音乐超时，请稍后重试'); // Generation timed out, please try again later
 }
 
-// Helper function to update status message (assuming you have an element with id="status-message")
-function updateStatusMessage(message) {
-    const statusElement = document.getElementById('status-message');
-    if (statusElement) {
-        statusElement.textContent = message;
-    }
-}
-
 
 // Expose API functions to the global scope (consider using modules if scaling)
 window.MoodFlowAPI = {
@@ -261,4 +267,4 @@ window.MoodFlowAPI = {
     MOOD_NAMES    // Keep names accessible for UI updates
 };
 
-console.log("MoodFlowAPI loaded."); // Log to confirm script loading
+console.log("MoodFlowAPI loaded (using 'lyrics' input)."); // Log to confirm script loading and change
