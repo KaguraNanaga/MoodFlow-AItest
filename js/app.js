@@ -1,297 +1,439 @@
 /**
- * MoodFlow AI - 主应用逻辑
+ * MoodFlow AI - Main Application Logic
  */
 
-// 当文档加载完成后初始化应用
+// Store the mood that triggered the API key modal
+let pendingMood = null;
+
+// When the document is fully loaded, initialize the application
 document.addEventListener('DOMContentLoaded', initApp);
 
 /**
- * 初始化应用
+ * Initialize the application: setup listeners, load API key, check environment.
  */
 function initApp() {
-    // 初始化音频播放器
-    window.MoodFlowPlayer.init();
-    
-    // 更新页脚年份
-    document.getElementById('current-year').textContent = new Date().getFullYear();
-    
-    // 检查环境
-    checkEnvironment();
-    
-    // 检查是否已保存API密钥
-    if (window.MoodFlowAPI.loadApiToken()) {
-        console.log('已加载已保存的API密钥');
+    // Initialize the audio player module (assuming it exists in audio-player.js)
+    if (window.MoodFlowPlayer && typeof window.MoodFlowPlayer.init === 'function') {
+        window.MoodFlowPlayer.init();
     } else {
-        // 显示API密钥输入对话框
+        console.error("MoodFlowPlayer or MoodFlowPlayer.init is not defined. Check audio-player.js.");
+        // Display an error to the user if the player can't initialize
+        updateStatusMessage("错误：无法初始化播放器。", true);
+        // Optionally disable relevant UI elements if the player is essential
+    }
+
+    // Update the copyright year in the footer
+    const currentYearElement = document.getElementById('current-year');
+    if (currentYearElement) {
+        currentYearElement.textContent = new Date().getFullYear();
+    }
+
+    // Check the runtime environment (e.g., file:// protocol)
+    checkEnvironment();
+
+    // Attempt to load a saved API key from localStorage
+    if (window.MoodFlowAPI && typeof window.MoodFlowAPI.loadApiToken === 'function' && window.MoodFlowAPI.loadApiToken()) {
+        console.log('已加载保存的API密钥 (Loaded saved API key)');
+    } else {
+        // If no key is loaded, show the modal to prompt the user
         showApiKeyModal();
     }
-    
-    // 为情绪卡片添加点击事件
+
+    // Setup event listeners for UI elements
     setupMoodCards();
-    
-    // 为切换情绪按钮添加点击事件
-    document.getElementById('change-mood-btn').addEventListener('click', () => {
-        window.MoodFlowPlayer.showMoodSelection();
-    });
-    
-    // 为保存API密钥按钮添加点击事件
-    document.getElementById('save-api-key').addEventListener('click', saveApiKey);
-    
-    // 为重置API密钥链接添加点击事件
-    document.getElementById('reset-api-key').addEventListener('click', (e) => {
-        e.preventDefault();
-        showApiKeyModal();
-    });
-    
-    // 添加预览音频功能，当鼠标悬停在卡片上时播放示例音频
-    setupAudioPreview();
-    
-    // 设置时间显示更新
-    setupTimeDisplay();
+    setupPlayerControls();
+    setupApiKeyModal();
+    setupAudioPreview(); // Sets up hover previews
+    setupTimeDisplay(); // Updates the time display for the audio player
+
+    console.log("MoodFlow AI App Initialized.");
 }
 
 /**
- * 检查运行环境
+ * Check the runtime environment and display warnings if necessary.
  */
 function checkEnvironment() {
-    // 检查是否在本地文件系统运行
+    // Warn if running directly from the file system
     if (window.location.protocol === 'file:') {
-        console.warn('应用正在以本地文件形式运行，API功能可能受限。建议使用HTTP服务器运行。');
-        
-        // 在页面顶部显示提示信息
+        console.warn('应用正在以本地文件形式运行 (Application is running from file:// protocol), API functionality may be limited. It is recommended to use an HTTP server.');
+
+        // Display a warning message at the top of the page
         const warningDiv = document.createElement('div');
-        warningDiv.className = 'environment-warning';
+        // Use Tailwind classes for styling if available, otherwise fallback to inline styles or a dedicated CSS class
+        warningDiv.className = 'environment-warning bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative mb-4 text-center sticky top-0 z-50'; // Example Tailwind classes
         warningDiv.innerHTML = `
-            <p>⚠️ 您正在直接从文件系统打开本应用，某些功能可能无法正常工作。</p>
-            <p>建议使用本地服务器运行，例如使用Python命令：<code>python -m http.server</code></p>
-            <button id="close-warning">我知道了</button>
+            <p class="font-bold">⚠️ 运行环境提示 (Environment Warning)</p>
+            <p class="text-sm">您似乎正在直接打开HTML文件。为了保证所有功能正常（特别是API调用），请使用本地HTTP服务器运行。</p>
+            <p class="text-xs mt-1">例如，在项目目录下运行: <code>python -m http.server 8000</code> 然后访问 <code>http://localhost:8000</code></p>
+            <button id="close-warning" class="absolute top-0 bottom-0 right-0 px-4 py-3 text-yellow-700 hover:text-yellow-900">&times;</button>
         `;
         document.body.insertBefore(warningDiv, document.body.firstChild);
-        
-        // 添加关闭按钮功能
-        document.getElementById('close-warning').addEventListener('click', () => {
-            warningDiv.style.display = 'none';
-        });
-        
-        // 添加样式
-        const style = document.createElement('style');
-        style.textContent = `
-            .environment-warning {
-                background-color: #fff3cd;
-                color: #856404;
-                padding: 10px;
-                border-radius: 5px;
-                margin-bottom: 15px;
-                text-align: center;
-                position: sticky;
-                top: 0;
-                z-index: 100;
-            }
-            .environment-warning code {
-                background-color: rgba(0,0,0,0.1);
-                padding: 2px 5px;
-                border-radius: 3px;
-            }
-            .environment-warning button {
-                background-color: #856404;
-                color: white;
-                border: none;
-                padding: 5px 10px;
-                border-radius: 3px;
-                margin-top: 5px;
-                cursor: pointer;
-            }
-        `;
-        document.head.appendChild(style);
+
+        // Add close button functionality
+        const closeButton = document.getElementById('close-warning');
+        if (closeButton) {
+            closeButton.addEventListener('click', () => {
+                warningDiv.style.display = 'none';
+            });
+        }
+        // Note: Consider adding the styles for '.environment-warning code' etc. to your main CSS file instead of injecting them here.
     }
-    
-    // 检查网络连接
+
+    // Check initial network status
     if (!navigator.onLine) {
-        console.warn('设备当前离线，API功能将无法正常工作。');
-        showError('您的设备当前处于离线状态，请连接网络后再使用本应用。');
+        console.warn('设备当前离线 (Device is currently offline). API functionality will be unavailable.');
+        showError('您的设备当前处于离线状态，请连接网络。'); // Your device is offline, please connect to the network.
     }
-    
-    // 监听网络状态变化
+
+    // Listen for network status changes
     window.addEventListener('online', () => {
-        console.log('网络已连接');
+        console.log('网络已连接 (Network connected)');
+        updateStatusMessage('网络已连接。', false); // Network connected.
     });
-    
+
     window.addEventListener('offline', () => {
-        console.warn('网络已断开');
-        showError('网络连接已断开，API功能将无法正常工作。');
+        console.warn('网络已断开 (Network disconnected)');
+        showError('网络连接已断开，API功能将无法工作。'); // Network disconnected, API features will not work.
+        // Optionally stop any ongoing API requests or playback
+        if (window.MoodFlowPlayer && typeof window.MoodFlowPlayer.stop === 'function') {
+            window.MoodFlowPlayer.stop(); // Assuming a stop function exists
+        }
     });
 }
 
 /**
- * 为情绪卡片添加点击事件
+ * Add click event listeners to the mood selection cards.
  */
 function setupMoodCards() {
     const moodCards = document.querySelectorAll('.mood-card');
-    
     moodCards.forEach(card => {
         card.addEventListener('click', () => {
             const mood = card.getAttribute('data-mood');
-            
-            // 检查API密钥是否设置
-            if (!window.MoodFlowAPI.isApiTokenSet()) {
-                showApiKeyModal(() => {
-                    window.MoodFlowPlayer.startMusicByMood(mood);
-                });
+            if (!mood) {
+                console.error("Mood card is missing data-mood attribute:", card);
                 return;
             }
-            
-            // 开始播放选定情绪的音乐
-            window.MoodFlowPlayer.startMusicByMood(mood);
+
+            console.log(`Mood card clicked: ${mood}`);
+
+            // Check if API key is set before starting music
+            if (window.MoodFlowAPI && typeof window.MoodFlowAPI.isApiTokenSet === 'function' && window.MoodFlowAPI.isApiTokenSet()) {
+                // If key is set, start the music directly
+                if (window.MoodFlowPlayer && typeof window.MoodFlowPlayer.startMusicByMood === 'function') {
+                    window.MoodFlowPlayer.startMusicByMood(mood);
+                } else {
+                     console.error("MoodFlowPlayer.startMusicByMood is not defined.");
+                     updateStatusMessage("错误：无法启动音乐。", true); // Error: Cannot start music.
+                }
+            } else {
+                // If key is not set, store the selected mood and show the API key modal
+                console.log("API key not set, showing modal.");
+                pendingMood = mood; // Store the mood that was clicked
+                showApiKeyModal();
+            }
         });
     });
 }
 
 /**
- * 显示API密钥输入对话框
- * @param {Function} callback - 设置完成后的回调函数
+ * Add click listeners for player controls (Change Mood).
  */
-function showApiKeyModal(callback) {
-    const modal = document.getElementById('api-key-prompt');
-    modal.classList.remove('hidden');
-    
-    // 保存回调函数，当保存API密钥时使用
-    modal.dataset.callback = callback ? 'true' : 'false';
-    
-    // 聚焦到输入框
-    document.getElementById('api-key-input').focus();
+function setupPlayerControls() {
+     const changeMoodBtn = document.getElementById('change-mood-btn');
+     if (changeMoodBtn) {
+         changeMoodBtn.addEventListener('click', () => {
+             if (window.MoodFlowPlayer && typeof window.MoodFlowPlayer.showMoodSelection === 'function') {
+                 window.MoodFlowPlayer.showMoodSelection();
+             } else {
+                 console.error("MoodFlowPlayer.showMoodSelection is not defined.");
+                 // Fallback: Manually hide player and show mood selection if function is missing
+                 document.getElementById('player-container')?.classList.add('hidden');
+                 document.getElementById('mood-selection')?.classList.remove('hidden');
+             }
+         });
+     }
+     // Note: Play/Pause button listener is likely handled within audio-player.js's init function.
 }
 
 /**
- * 保存API密钥
+ * Setup listeners related to the API Key modal.
  */
-function saveApiKey() {
-    const apiKeyInput = document.getElementById('api-key-input');
-    const apiKey = apiKeyInput.value.trim();
+function setupApiKeyModal() {
+    const saveButton = document.getElementById('save-api-key');
+    const resetButton = document.getElementById('reset-api-key');
     const modal = document.getElementById('api-key-prompt');
-    
-    if (apiKey) {
-        window.MoodFlowAPI.setApiToken(apiKey);
-        modal.classList.add('hidden');
-        
-        // 如果有回调函数，执行它
-        if (modal.dataset.callback === 'true') {
-            // 清除回调标记
-            modal.dataset.callback = 'false';
-            // 获取用户点击的情绪卡片
-            const moodCards = document.querySelectorAll('.mood-card');
-            for (const card of moodCards) {
-                if (card.classList.contains('selected')) {
-                    const mood = card.getAttribute('data-mood');
-                    window.MoodFlowPlayer.startMusicByMood(mood);
-                    break;
-                }
-            }
+    const apiKeyInput = document.getElementById('api-key-input');
+
+    if (saveButton) {
+        saveButton.addEventListener('click', saveApiKey);
+    }
+    if (resetButton) {
+        resetButton.addEventListener('click', (e) => {
+            e.preventDefault(); // Prevent default link behavior
+            pendingMood = null; // Clear any pending mood when manually resetting
+            showApiKeyModal();
+        });
+    }
+     // Optional: Allow pressing Enter in the input field to save the key
+     if (apiKeyInput) {
+         apiKeyInput.addEventListener('keypress', (e) => {
+             if (e.key === 'Enter') {
+                 saveApiKey();
+             }
+         });
+     }
+}
+
+
+/**
+ * Show the API key input modal.
+ */
+function showApiKeyModal() {
+    const modal = document.getElementById('api-key-prompt');
+    const apiKeyInput = document.getElementById('api-key-input');
+    const messageElement = document.getElementById('api-key-message'); // Get the message element
+
+    if (modal) {
+        modal.classList.remove('hidden');
+        // Clear previous messages and input value
+        if (messageElement) messageElement.textContent = '';
+        if (apiKeyInput) {
+             apiKeyInput.value = ''; // Clear previous input
+             apiKeyInput.focus(); // Focus on the input field
         }
     } else {
-        alert('请输入有效的API密钥');
+        console.error("API Key Modal element not found.");
     }
 }
 
 /**
- * 设置音频预览功能
- * 注意：在实际应用中，你需要预先为每个情绪准备短音频样本
- * 这里仅演示功能，实际实现中需要预先生成并保存多个样本
+ * Save the entered API key, hide the modal, and start music if a mood was pending.
  */
-function setupAudioPreview() {
-    // 由于预览音频文件可能不存在，我们将使用在线免费音频样本
-    const previewAudios = {
-        'calm-focus': 'https://assets.mixkit.co/sfx/preview/mixkit-warm-notification-bell-951.mp3',
-        'energetic-morning': 'https://assets.mixkit.co/sfx/preview/mixkit-message-pop-alert-2354.mp3',
-        'relaxing-night': 'https://assets.mixkit.co/sfx/preview/mixkit-little-bird-singing-in-a-tree-17.mp3',
-        'cafe-vibe': 'https://assets.mixkit.co/sfx/preview/mixkit-guitar-notification-alert-2320.mp3'
-    };
-    
-    // 创建预览音频元素
-    const previewAudio = new Audio();
-    previewAudio.volume = 0.5;
-    
-    // 当前预览的情绪
-    let currentPreview = null;
-    
-    // 为每个情绪卡片添加鼠标事件
-    document.querySelectorAll('.mood-card').forEach(card => {
-        const mood = card.getAttribute('data-mood');
-        
-        // 鼠标进入时播放预览
-        card.addEventListener('mouseenter', () => {
-            if (previewAudios[mood]) {
-                currentPreview = mood;
-                previewAudio.src = previewAudios[mood];
-                previewAudio.play().catch(error => {
-                    console.warn('无法播放预览音频:', error);
-                });
+function saveApiKey() {
+    const apiKeyInput = document.getElementById('api-key-input');
+    const modal = document.getElementById('api-key-prompt');
+    const messageElement = document.getElementById('api-key-message'); // Get the message element
+    let apiKey = '';
+
+    if (apiKeyInput) {
+        apiKey = apiKeyInput.value.trim();
+    } else {
+         console.error("API Key input element not found.");
+         if (messageElement) messageElement.textContent = '发生内部错误。'; // Internal error occurred.
+         return;
+    }
+
+    // Clear previous message
+    if (messageElement) messageElement.textContent = '';
+
+    if (apiKey && window.MoodFlowAPI && typeof window.MoodFlowAPI.setApiToken === 'function') {
+        window.MoodFlowAPI.setApiToken(apiKey);
+        console.log("API Key saved.");
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+
+        // **Refined Logic:** If a mood was selected before the modal was shown, start playing it now.
+        if (pendingMood) {
+            console.log(`API Key saved, starting pending mood: ${pendingMood}`);
+            if (window.MoodFlowPlayer && typeof window.MoodFlowPlayer.startMusicByMood === 'function') {
+                window.MoodFlowPlayer.startMusicByMood(pendingMood);
+            } else {
+                 console.error("MoodFlowPlayer.startMusicByMood is not defined.");
+                 updateStatusMessage("错误：无法启动音乐。", true); // Error: Cannot start music.
             }
-        });
-        
-        // 鼠标离开时停止预览
-        card.addEventListener('mouseleave', () => {
-            if (currentPreview === mood) {
-                previewAudio.pause();
-                previewAudio.currentTime = 0;
-                currentPreview = null;
-            }
-        });
-        
-        // 点击时添加选中状态（用于API密钥对话框回调）
-        card.addEventListener('click', () => {
-            document.querySelectorAll('.mood-card').forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
-        });
-    });
+            pendingMood = null; // Clear the pending mood after attempting to start
+        }
+    } else {
+        console.warn("API Key input was empty or MoodFlowAPI.setApiToken is not available.");
+        // **Refined Error Display:** Show error message inside the modal instead of alert()
+        if (messageElement) {
+            messageElement.textContent = '请输入有效的API密钥。'; // Please enter a valid API key.
+        }
+        if (apiKeyInput) {
+             apiKeyInput.focus(); // Keep focus on input
+        }
+    }
 }
 
 /**
- * 设置时间显示更新
+ * Setup audio preview on mood card hover.
+ * Uses external sample URLs as placeholders.
+ */
+function setupAudioPreview() {
+    // Placeholder preview audio URLs (replace with actual short samples if possible)
+    const previewAudios = {
+        'calm-focus': 'https://assets.mixkit.co/sfx/preview/mixkit-soft-game-notification-970.mp3', // Different samples
+        'energetic-morning': 'https://assets.mixkit.co/sfx/preview/mixkit-positive-interface-beep-221.mp3',
+        'relaxing-night': 'https://assets.mixkit.co/sfx/preview/mixkit-interface-hint-notification-911.mp3',
+        'cafe-vibe': 'https://assets.mixkit.co/sfx/preview/mixkit-bonus-extra-in-a-video-game-2064.mp3'
+    };
+
+    let previewAudio = null; // Initialize lazily
+    let currentPreviewMood = null;
+    let previewTimeout = null; // To add a slight delay before playing
+
+    document.querySelectorAll('.mood-card').forEach(card => {
+        const mood = card.getAttribute('data-mood');
+        const previewUrl = card.getAttribute('data-preview') || previewAudios[mood]; // Prefer data-preview if set in HTML
+
+        if (!previewUrl) return; // Skip if no preview URL
+
+        card.addEventListener('mouseenter', () => {
+            // Clear any previous timeout
+            if (previewTimeout) clearTimeout(previewTimeout);
+
+            // Set a short delay to prevent accidental plays while moving mouse quickly
+            previewTimeout = setTimeout(() => {
+                if (!previewAudio) { // Create Audio object only when first needed
+                    previewAudio = new Audio();
+                    previewAudio.volume = 0.4; // Adjust volume as needed
+                    previewAudio.preload = "auto"; // Preload the audio
+                     // Handle potential errors during playback
+                     previewAudio.addEventListener('error', (e) => {
+                         console.warn(`无法播放预览音频 (Cannot play preview audio) for ${currentPreviewMood}:`, e);
+                     });
+                }
+
+                // Stop any currently playing preview
+                if (currentPreviewMood && currentPreviewMood !== mood) {
+                    previewAudio.pause();
+                    previewAudio.currentTime = 0;
+                }
+
+                // Play the new preview if it's different
+                if (currentPreviewMood !== mood) {
+                    currentPreviewMood = mood;
+                    previewAudio.src = previewUrl;
+                    previewAudio.play().catch(error => {
+                        // Catch errors, e.g., user hasn't interacted with the page yet
+                        console.warn(`无法自动播放预览音频 (Cannot autoplay preview audio) for ${mood}:`, error.message);
+                    });
+                }
+            }, 150); // 150ms delay
+        });
+
+        card.addEventListener('mouseleave', () => {
+            // Clear the timeout and stop playback when mouse leaves
+            if (previewTimeout) clearTimeout(previewTimeout);
+            if (previewAudio && currentPreviewMood === mood) {
+                previewAudio.pause();
+                previewAudio.currentTime = 0;
+                currentPreviewMood = null;
+            }
+        });
+
+        // Removed the 'selected' class logic from here as it's not needed for the refined API key flow.
+        // If you need visual feedback on click *before* music starts, add it back or handle it in setupMoodCards.
+    });
+}
+
+
+/**
+ * Setup listeners to update the audio player's time display.
  */
 function setupTimeDisplay() {
     const audioPlayer = document.getElementById('audio-player');
     const currentTimeElement = document.getElementById('current-time');
     const durationElement = document.getElementById('duration');
-    
-    // 更新时间显示
-    function updateTimeDisplay() {
-        // 格式化时间为分:秒格式
-        const formatTime = (time) => {
-            const minutes = Math.floor(time / 60);
-            const seconds = Math.floor(time % 60);
-            return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-        };
-        
-        currentTimeElement.textContent = formatTime(audioPlayer.currentTime);
-        if (!isNaN(audioPlayer.duration)) {
-            durationElement.textContent = formatTime(audioPlayer.duration);
-        }
+
+    if (!audioPlayer || !currentTimeElement || !durationElement) {
+        console.error("Audio player time display elements not found.");
+        return;
     }
-    
-    // 添加事件监听器
-    audioPlayer.addEventListener('timeupdate', updateTimeDisplay);
-    audioPlayer.addEventListener('loadedmetadata', updateTimeDisplay);
+
+    // Function to format time in M:SS format
+    const formatTime = (time) => {
+        if (isNaN(time) || time === Infinity) {
+            return '0:00'; // Return default if time is invalid
+        }
+        const minutes = Math.floor(time / 60);
+        const seconds = Math.floor(time % 60);
+        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    };
+
+    // Update display based on player events
+    const updateDisplay = () => {
+        currentTimeElement.textContent = formatTime(audioPlayer.currentTime);
+        // Only update duration if it's a valid number
+        if (isFinite(audioPlayer.duration)) {
+            durationElement.textContent = formatTime(audioPlayer.duration);
+        } else {
+             durationElement.textContent = '0:00'; // Reset if duration is not available
+        }
+    };
+
+    audioPlayer.addEventListener('timeupdate', updateDisplay);
+    audioPlayer.addEventListener('loadedmetadata', updateDisplay);
+    // Also update when the duration changes (can happen with streaming/loading)
+    audioPlayer.addEventListener('durationchange', updateDisplay);
+     // Reset display when audio ends or is stopped/changed
+     audioPlayer.addEventListener('ended', () => {
+         // Optionally reset progress bar here too if not handled by player module
+         currentTimeElement.textContent = '0:00';
+     });
+     audioPlayer.addEventListener('emptied', () => { // Fired when src is changed
+         currentTimeElement.textContent = '0:00';
+         durationElement.textContent = '0:00';
+     });
 }
 
 /**
- * 显示错误消息
- * @param {string} message - 错误消息
+ * Display an error message to the user (using status message area instead of alert).
+ * @param {string} message - The error message to display.
+ * @param {boolean} isCritical - Optional flag for critical errors.
  */
 function showError(message) {
-    // 检查是否为CORS或本地文件系统相关错误
-    if (message.includes('跨域') || message.includes('CORS') || message.includes('cross-origin')) {
-        alert(`错误: ${message}\n\n如果您是直接从文件系统打开网页，建议按照以下步骤操作：\n1. 使用Python启动本地服务器: python -m http.server\n2. 在浏览器中访问: http://localhost:8000`);
-    } else if (message.includes('API密钥')) {
-        alert(`错误: ${message}\n\n请确保输入了有效的Replicate API密钥。您可以在Replicate账户设置中获取密钥。`);
-    } else {
-        alert(`错误: ${message}`);
-    }
-    
-    // 如果错误与API密钥有关，显示API密钥输入对话框
-    if (message.includes('API密钥') || message.includes('Token') || message.includes('token')) {
+    console.error("Error displayed to user:", message); // Log the error for debugging
+
+    // **Refined Error Display:** Use the status message area
+    updateStatusMessage(`错误: ${message}`, true); // Error: [message]
+
+    // Provide specific guidance for common issues
+    if (message.includes('跨域') || message.includes('CORS') || message.includes('cross-origin') || message.includes('Failed to fetch')) {
+         if (window.location.protocol === 'file:') {
+            updateStatusMessage('错误：跨域请求被阻止。请使用本地HTTP服务器运行。', true); // Error: CORS blocked. Use local HTTP server.
+         } else {
+            updateStatusMessage('错误：网络请求失败。请检查网络连接或浏览器控制台。', true); // Error: Network request failed. Check connection/console.
+         }
+    } else if (message.includes('API密钥') || message.includes('Token') || message.includes('token') || message.includes('认证失败') || message.includes('需要付费')) {
+        // If error is related to API key, show the modal again
         showApiKeyModal();
+        // Also display error in the modal's message area
+        const modalMessageElement = document.getElementById('api-key-message');
+        if (modalMessageElement) {
+            modalMessageElement.textContent = message; // Show specific error in modal
+        }
+    }
+    // Potentially hide loading indicator if an error occurs during generation
+    const loadingIndicator = document.getElementById('loading-indicator');
+    if (loadingIndicator) loadingIndicator.classList.add('hidden');
+}
+
+/**
+ * Updates the status message display area.
+ * @param {string} message - The message to display.
+ * @param {boolean} isError - Optional flag to style as an error.
+ */
+function updateStatusMessage(message, isError = false) {
+    const statusElement = document.getElementById('status-message');
+    if (statusElement) {
+        statusElement.textContent = message;
+        if (isError) {
+            statusElement.classList.add('text-red-500', 'font-semibold'); // Add error styling (Tailwind example)
+             statusElement.classList.remove('text-gray-600');
+        } else {
+            statusElement.classList.remove('text-red-500', 'font-semibold');
+             statusElement.classList.add('text-gray-600'); // Reset to default style
+        }
+    } else {
+        console.log("Status Update:", message); // Fallback log if element not found
     }
 }
 
-// 导出函数供其他模块使用
-window.showError = showError; 
+
+// Expose necessary functions/variables to the global scope if needed by other scripts
+// (Consider using JS Modules for better organization in larger projects)
+window.showError = showError; // Make showError globally accessible if needed by api.js or audio-player.js
+window.updateStatusMessage = updateStatusMessage; // Make status update globally accessible
+
