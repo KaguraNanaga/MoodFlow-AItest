@@ -1,21 +1,24 @@
 /**
- * API处理模块 - 负责与Replicate API通信
+ * API Handler Module - Responsible for communicating with the Replicate API
  */
 
-// Replicate API配置
+// Replicate API Configuration
 const REPLICATE_API_URL = 'https://api.replicate.com/v1/predictions';
-// 用户API密钥 - 初始化为空，需要用户输入
-let REPLICATE_API_TOKEN = ''; 
+// User API Key - Initialized as empty, needs user input
+let REPLICATE_API_TOKEN = '';
 
-// 各情绪对应的歌词映射
+// --- IMPORTANT CHANGES ---
+// Mood prompts mapping (Using English prompts as likely expected by the model)
+// These prompts are based on your initial project description.
+// You should test and refine these prompts based on the actual output of minimax/music-01.
 const MOOD_PROMPTS = {
-    'calm-focus': '平静的钢琴旋律，轻柔的节奏，帮助专注工作和学习的音乐',
-    'energetic-morning': '充满活力的早晨音乐，积极向上的旋律，让人精神振奋',
-    'relaxing-night': '舒缓的夜晚旋律，柔和的合成器声音，助眠放松的音乐',
-    'cafe-vibe': '咖啡馆爵士氛围，钢琴与低音贝斯，温暖舒适的背景音乐'
+    'calm-focus': "instrumental, lofi hip hop, calm, focus, study beats, low tempo, no vocals, simple bassline, soft drums, 70 bpm",
+    'energetic-morning': "upbeat instrumental, acoustic guitar, light percussion, positive energy, morning vibe, walking tempo, happy melody, 110 bpm",
+    'relaxing-night': "ambient music, relaxing, sleep, calm, synthesizer pads, slow tempo, minimal, atmospheric, 60 bpm",
+    'cafe-vibe': "jazz hop, cafe ambience, instrumental, relaxed, coffee shop background music, moderate tempo, saxophone hints, 85 bpm" // Adjusted from original description for clarity
 };
 
-// 情绪对应的中文名称
+// Mood names in Chinese (for display purposes)
 const MOOD_NAMES = {
     'calm-focus': '宁静专注',
     'energetic-morning': '活力晨间',
@@ -24,20 +27,21 @@ const MOOD_NAMES = {
 };
 
 /**
- * 设置API令牌
- * @param {string} token - API密钥
+ * Set the API token and save it to localStorage.
+ * @param {string} token - The Replicate API token.
  */
 function setApiToken(token) {
     REPLICATE_API_TOKEN = token;
     try {
         localStorage.setItem('replicate_api_token', token);
     } catch (error) {
-        console.warn('无法保存API密钥到localStorage，可能是因为浏览器限制或隐私设置', error);
+        console.warn('Could not save API token to localStorage. Browser restrictions or private mode might be active.', error);
     }
 }
 
 /**
- * 从localStorage加载API令牌（如果有）
+ * Load the API token from localStorage if available.
+ * @returns {boolean} - True if a token was loaded, false otherwise.
  */
 function loadApiToken() {
     try {
@@ -47,129 +51,214 @@ function loadApiToken() {
             return true;
         }
     } catch (error) {
-        console.warn('无法从localStorage读取API密钥，可能是因为浏览器限制或隐私设置', error);
+        console.warn('Could not read API token from localStorage. Browser restrictions or private mode might be active.', error);
     }
     return false;
 }
 
 /**
- * 检查API令牌是否已设置
- * @returns {boolean} - 是否已设置API令牌
+ * Check if the API token is set.
+ * @returns {boolean} - True if the token is set, false otherwise.
  */
 function isApiTokenSet() {
     return !!REPLICATE_API_TOKEN && REPLICATE_API_TOKEN.trim() !== '';
 }
 
 /**
- * 根据情绪生成音乐
- * @param {string} mood - 情绪类型
- * @returns {Promise} - 包含生成音乐URL的Promise
+ * Generate music based on the selected mood by calling the Replicate API.
+ * @param {string} mood - The selected mood key (e.g., 'calm-focus').
+ * @returns {Promise<string>} - A promise that resolves with the URL of the generated audio file.
+ * @throws {Error} - Throws an error if the API key is not set, the mood is invalid, or the API call fails.
  */
 async function generateMusic(mood) {
     if (!isApiTokenSet()) {
-        throw new Error('API密钥未设置，请先设置API密钥');
+        // Don't proceed if API key is missing
+        throw new Error('API密钥未设置，请先设置API密钥'); // API key not set, please set it first
     }
 
     if (!MOOD_PROMPTS[mood]) {
-        throw new Error('无效的情绪类型');
+        // Handle invalid mood selection
+        throw new Error('无效的情绪类型'); // Invalid mood type
     }
 
-    const lyrics = MOOD_PROMPTS[mood];
-    
+    // --- IMPORTANT CHANGES ---
+    const prompt = MOOD_PROMPTS[mood]; // Use the English prompt
+    const musicDuration = 90; // Example duration in seconds. Verify parameter name and units with Replicate docs!
+    const modelVersion = "9a423b48397ce2d82e2fc5be17cc6c273cc129cf70e0f44a911d6b0385853b4e"; // Verify this version ID on Replicate!
+
+    console.log(`Generating music for mood: ${mood} with prompt: "${prompt}" and duration: ${musicDuration}s`);
+
     try {
-        // 1. 创建预测请求
-        const response = await fetch(REPLICATE_API_URL, {
+        // Step 1: Create the prediction request
+        const initialResponse = await fetch(REPLICATE_API_URL, {
             method: 'POST',
             headers: {
                 'Authorization': `Token ${REPLICATE_API_TOKEN}`,
                 'Content-Type': 'application/json'
             },
+            // --- IMPORTANT CHANGES ---
+            // Use 'prompt' instead of 'lyrics' and add 'duration'
+            // Verify the exact parameter names required by the specific model version on Replicate.
             body: JSON.stringify({
-                version: "9a423b48397ce2d82e2fc5be17cc6c273cc129cf70e0f44a911d6b0385853b4e", // minimax/music-01版本ID
+                version: modelVersion,
                 input: {
-                    lyrics: lyrics,
-                    // song_file参数是可选的，我们这里不提供参考音频文件
+                    prompt: prompt,
+                    duration: musicDuration // Assuming the parameter is named 'duration' and expects seconds
+                    // Add other parameters like temperature if needed/supported
                 }
             })
-        }).catch(error => {
-            // 捕获网络错误，特别是CORS错误
-            if (error.message.includes('CORS') || error.message.includes('跨域') || error.message.includes('cross-origin')) {
-                throw new Error('跨域请求被阻止。如果您是直接打开本地HTML文件，请尝试使用本地服务器运行应用。您可以使用README中提到的Python简易服务器方法。');
-            }
-            throw error;
         });
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: '无法解析错误响应' }));
-            throw new Error(`API请求失败: ${errorData.error || response.statusText}`);
+        // Handle initial network errors or non-OK responses
+        if (!initialResponse.ok) {
+            let errorData;
+            try {
+                errorData = await initialResponse.json();
+                console.error("API Error Response:", errorData); // Log the detailed error from API
+            } catch (e) {
+                errorData = { detail: '无法解析错误响应' }; // Cannot parse error response
+            }
+            // Provide more specific feedback based on status code
+            if (initialResponse.status === 401) {
+                 throw new Error(`API请求失败: 认证失败 (401)。请检查你的API密钥是否正确且有效。`); // Authentication failed. Check your API key.
+            } else if (initialResponse.status === 402) {
+                 throw new Error(`API请求失败: 需要付费 (402)。请检查你的Replicate账户余额或计划。`); // Payment required. Check your Replicate account.
+            } else if (initialResponse.status === 429) {
+                 throw new Error(`API请求失败: 请求过于频繁 (429)。请稍后再试。`); // Rate limit exceeded. Try again later.
+            } else {
+                throw new Error(`API请求失败: ${errorData.detail || initialResponse.statusText} (${initialResponse.status})`);
+            }
         }
 
-        const predictionData = await response.json();
+        const predictionData = await initialResponse.json();
         const predictionId = predictionData.id;
 
-        // 2. 轮询检查预测结果
+        if (!predictionId) {
+             throw new Error('未能从API响应中获取预测ID'); // Failed to get prediction ID from API response
+        }
+
+        console.log(`Prediction started with ID: ${predictionId}`);
+        updateStatusMessage(`正在生成音乐 (ID: ${predictionId.substring(0, 6)})...`); // Generating music...
+
+        // Step 2: Poll for the prediction result
         return await pollPredictionResult(predictionId);
+
     } catch (error) {
-        console.error('生成音乐时出错:', error);
+        // Catch and log errors from the fetch or polling process
+        console.error('生成音乐时出错 (Error during music generation):', error);
+        // Display specific CORS error message if detected
+         if (error.message.includes('Failed to fetch') && navigator.onLine === false) {
+             throw new Error('网络连接已断开。请检查您的网络连接。'); // Network connection lost.
+         } else if (error.message.includes('Failed to fetch') || error.message.includes('CORS') || error.message.includes('跨域')) {
+             // Check if running locally via file://
+             if (window.location.protocol === 'file:') {
+                  throw new Error('跨域请求被阻止。请使用本地HTTP服务器 (例如 VS Code Live Server 或 python -m http.server) 运行此应用，而不是直接打开HTML文件。'); // CORS blocked. Use a local HTTP server.
+             } else {
+                  throw new Error(`网络请求失败。可能是 CORS 问题或网络连接问题。请检查浏览器控制台获取详细信息。(${error.message})`); // Network request failed. Check console.
+             }
+         }
+        // Re-throw the original or modified error
         throw error;
     }
 }
 
 /**
- * 轮询检查预测结果
- * @param {string} predictionId - 预测ID
- * @returns {Promise} - 包含生成音乐URL的Promise
+ * Poll the Replicate API for the prediction result.
+ * @param {string} predictionId - The ID of the prediction to poll.
+ * @returns {Promise<string>} - A promise that resolves with the URL of the generated audio file.
+ * @throws {Error} - Throws an error if polling fails, the prediction fails, or it times out.
  */
 async function pollPredictionResult(predictionId) {
-    const maxAttempts = 60; // 最多尝试次数
-    const pollInterval = 2000; // 轮询间隔（毫秒）
-    
+    const maxAttempts = 60; // Max polling attempts (e.g., 60 * 3s = 3 minutes)
+    const pollInterval = 3000; // Polling interval in milliseconds (e.g., 3 seconds)
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        console.log(`Polling attempt ${attempt + 1} for prediction ID: ${predictionId}`);
+        await new Promise(resolve => setTimeout(resolve, pollInterval)); // Wait before the next poll
+
         try {
-            const response = await fetch(`${REPLICATE_API_URL}/${predictionId}`, {
+            const pollResponse = await fetch(`${REPLICATE_API_URL}/${predictionId}`, {
                 headers: {
                     'Authorization': `Token ${REPLICATE_API_TOKEN}`,
                     'Content-Type': 'application/json'
                 }
-            }).catch(error => {
-                // 捕获网络错误，特别是CORS错误
-                if (error.message.includes('CORS') || error.message.includes('跨域') || error.message.includes('cross-origin')) {
-                    throw new Error('跨域请求被阻止。如果您是直接打开本地HTML文件，请尝试使用本地服务器运行应用。');
-                }
-                throw error;
             });
 
-            if (!response.ok) {
-                throw new Error(`轮询失败: ${response.statusText}`);
+            if (!pollResponse.ok) {
+                 // Handle specific polling errors if needed
+                 if (pollResponse.status === 404) {
+                     throw new Error(`轮询失败: 找不到预测任务 (404)。ID 可能无效或已过期。`); // Polling failed: Prediction not found.
+                 }
+                throw new Error(`轮询失败: ${pollResponse.statusText} (${pollResponse.status})`); // Polling failed
             }
 
-            const result = await response.json();
-            
-            // 检查生成状态
+            const result = await pollResponse.json();
+            console.log("Polling result:", result); // Log the polling response for debugging
+
+            // Check the prediction status
             if (result.status === 'succeeded') {
-                // 返回生成的音频URL
-                return result.output;
+                console.log('音乐生成成功！(Music generation successful!)');
+                updateStatusMessage('音乐生成成功！');
+                // Ensure the output is the expected audio URL string
+                if (typeof result.output === 'string' && result.output.startsWith('http')) {
+                     return result.output;
+                } else {
+                     // Handle cases where output might be different (e.g., array, object)
+                     console.error("Unexpected output format from Replicate:", result.output);
+                     // Attempt to find a URL if output is an array
+                     if (Array.isArray(result.output) && result.output.length > 0 && typeof result.output[0] === 'string' && result.output[0].startsWith('http')) {
+                         console.warn("Output was an array, using the first element.");
+                         return result.output[0];
+                     }
+                     throw new Error('音乐生成成功，但未能获取有效的音频URL。'); // Succeeded, but couldn't get a valid audio URL.
+                }
             } else if (result.status === 'failed') {
-                throw new Error(`音乐生成失败: ${result.error || '未知错误'}`);
+                console.error('音乐生成失败 (Music generation failed by Replicate). Error:', result.error);
+                // --- IMPORTANT CHANGE --- Log the specific error from Replicate
+                throw new Error(`音乐生成失败: ${result.error || '未知错误'}`); // Music generation failed: [API error or 'Unknown error']
+            } else if (result.status === 'canceled') {
+                 console.warn('音乐生成任务已被取消。(Music generation task was cancelled.)');
+                 throw new Error('音乐生成任务已被取消。');
             }
-            
-            // 如果还在处理中，等待一段时间后再次轮询
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
+             // If status is 'starting' or 'processing', continue polling
+            console.log(`当前状态 (Current status): ${result.status}. 继续轮询... (Continuing polling...)`);
+             updateStatusMessage(`正在生成音乐 (${result.status})...`); // Update status for user
+
         } catch (error) {
-            console.error('轮询预测结果时出错:', error);
-            throw error;
+            console.error('轮询预测结果时出错 (Error during polling):', error);
+            // Don't immediately throw if it's just one failed poll attempt, unless it's a fatal error like 404
+            if (error.message.includes('404')) {
+                 throw error; // Re-throw fatal errors immediately
+            }
+            // For other errors, log and continue polling unless max attempts are reached
+             if (attempt === maxAttempts - 1) {
+                 throw new Error(`轮询时发生错误，已达最大尝试次数。(${error.message})`); // Error during polling, max attempts reached.
+             }
         }
     }
-    
-    throw new Error('生成音乐超时，请稍后重试');
+
+    // If loop finishes without success/failure, it's a timeout
+    console.error('生成音乐超时 (Music generation timed out).');
+    throw new Error('生成音乐超时，请稍后重试'); // Generation timed out, please try again later
 }
 
-// 导出API功能
+// Helper function to update status message (assuming you have an element with id="status-message")
+function updateStatusMessage(message) {
+    const statusElement = document.getElementById('status-message');
+    if (statusElement) {
+        statusElement.textContent = message;
+    }
+}
+
+
+// Expose API functions to the global scope (consider using modules if scaling)
 window.MoodFlowAPI = {
     setApiToken,
     loadApiToken,
     isApiTokenSet,
     generateMusic,
-    MOOD_PROMPTS,
-    MOOD_NAMES
-}; 
+    MOOD_PROMPTS, // Keep prompts accessible if needed elsewhere
+    MOOD_NAMES    // Keep names accessible for UI updates
+};
+
+console.log("MoodFlowAPI loaded."); // Log to confirm script loading
